@@ -1,0 +1,23 @@
+[project]
+name = "auditbot"
+version = "0.1.0"
+description = "Telegram-бот воронки для привлечения клиентов на платный аудит Яндекс.Директа"
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+    "aiogram>=3.21.0",
+    "httpx>=0.28.0",
+    "python-dotenv>=1.1.0",
+]
+
+[tool.ruff]
+line-length = 88
+indent-width = 4
+target-version = "py312"
+
+[tool.ruff.lint]
+select = ["F", "E", "W", "B", "UP", "I", "SIM"]
+
+[tool.ruff.format]
+quote-style = "double"
+indent-style = "space"
