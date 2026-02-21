@@ -125,11 +125,15 @@ cd /home/direct/Auditbot
 uv sync --locked
 ```
 
-Для запуска через systemd создайте сервис `/etc/systemd/system/auditbot.service`:
+Для стабильной работы 24/7 запускайте через systemd (аналогично Qualbot).
+
+Unit-файл уже лежит в репозитории: `auditbot.service`.
+
+Для справки, его содержимое:
 
 ```ini
 [Unit]
-Description=Auditbot Telegram Bot
+Description=Auditbot Telegram Bot Service
 After=network.target
 
 [Service]
@@ -139,13 +143,18 @@ WorkingDirectory=/home/direct/Auditbot
 ExecStart=/home/direct/.local/bin/uv run bot.py
 Restart=always
 RestartSec=5
+Environment=PYTHONUNBUFFERED=1
 
 [Install]
 WantedBy=multi-user.target
 ```
 
 ```bash
-sudo systemctl enable auditbot
-sudo systemctl start auditbot
-sudo journalctl -u auditbot -f
+sudo cp ./auditbot.service /etc/systemd/system/
+sudo systemctl daemon-reload
+sudo systemctl enable auditbot.service
+sudo systemctl start auditbot.service
+
+# Логи
+sudo journalctl -u auditbot.service -f
 ```
