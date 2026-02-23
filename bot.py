@@ -17,6 +17,7 @@ from aiogram.fsm.storage.memory import MemoryStorage
 from aiogram.types import CallbackQuery, Message
 
 import config
+import scheduler
 from logger import logger
 from messages import (
     CB_ACCESS_REM_WRITE,
@@ -97,8 +98,7 @@ class Funnel(StatesGroup):
     finished = State()          # Воронка завершена
 
 
-# ── Управление таймаутами ─────────────────────────────────
-_timeout_tasks: dict[int, asyncio.Task] = {}
+# ── Вспомогательные функции FSM ──────────────────────────
 _bot_id: int | None = None
 
 
@@ -118,34 +118,76 @@ async def _get_state_ctx(user_id: int) -> FSMContext:
     return FSMContext(storage=storage, key=key)
 
 
-def _cancel_timeout(user_id: int) -> None:
-    """Отменить запланированный таймаут для пользователя."""
-    task = _timeout_tasks.pop(user_id, None)
-    if task and not task.done():
-        task.cancel()
+# ── Обработчики напоминаний (регистрируются в main()) ─────
+# Каждый handler — это top-level async-функция, принимающая user_id.
+# Они передаются в персистентный scheduler, который сохраняет их
+# в reminders.json и восстанавливает после перезапуска бота.
+
+async def _hdl_goal_reminder(user_id: int) -> None:
+    """Напоминание: не ответил о ключевой цели (10 мин → шаг goal_reminder)."""
+    ctx = await _get_state_ctx(user_id)
+    if await ctx.get_state() == Funnel.key_goal.state:
+        await _send_step(user_id, MSG_GOAL_REMINDER, keyboard=KB_GOAL_REMINDER)
+        await ctx.set_state(Funnel.goal_reminder)
+        scheduler.schedule(
+            user_id, "goal_final", config.FINAL_REMINDER_TIMEOUT,
+            expected_state=Funnel.goal_reminder.state,
+        )
 
 
-def _schedule_timeout(
-    user_id: int,
-    delay: int,
-    callback,
-) -> None:
-    """Запланировать таймаут-callback для пользователя.
+async def _hdl_goal_final(user_id: int) -> None:
+    """Финал: не нажал кнопку 24ч после напоминания о цели."""
+    ctx = await _get_state_ctx(user_id)
+    if await ctx.get_state() == Funnel.goal_reminder.state:
+        await _send_step(user_id, MSG_FINAL_REMINDER)
+        await ctx.set_state(Funnel.finished)
 
-    Предыдущий таймаут автоматически отменяется.
-    """
-    _cancel_timeout(user_id)
 
-    async def _run():
-        await asyncio.sleep(delay)
-        try:
-            await callback()
-        except Exception as e:
-            logger.error(f"Ошибка таймаута для user {user_id}: {e}")
-        finally:
-            _timeout_tasks.pop(user_id, None)
+async def _hdl_access_reminder(user_id: int) -> None:
+    """Напоминание: не выдал доступ (10 мин → шаг access_reminder)."""
+    ctx = await _get_state_ctx(user_id)
+    if await ctx.get_state() == Funnel.access_request.state:
+        await _send_step(
+            user_id, MSG_ACCESS_REMINDER, keyboard=KB_ACCESS_REMINDER,
+        )
+        await ctx.set_state(Funnel.access_reminder)
+        scheduler.schedule(
+            user_id, "access_final", config.FINAL_REMINDER_TIMEOUT,
+            expected_state=Funnel.access_reminder.state,
+        )
 
-    _timeout_tasks[user_id] = asyncio.create_task(_run())
+
+async def _hdl_access_final(user_id: int) -> None:
+    """Финал: не выдал доступ 24ч после напоминания."""
+    ctx = await _get_state_ctx(user_id)
+    if await ctx.get_state() == Funnel.access_reminder.state:
+        await _send_step(user_id, MSG_FINAL_REMINDER)
+        await ctx.set_state(Funnel.finished)
+
+
+async def _hdl_price_reminder(user_id: int) -> None:
+    """Напоминание: не ответил на стоимость (24ч → шаг price_reminder)."""
+    ctx = await _get_state_ctx(user_id)
+    if await ctx.get_state() == Funnel.price.state:
+        await _send_step(
+            user_id,
+            MSG_PRICE_REMINDER,
+            keyboard=KB_PRICE_REMINDER,
+            video=config.VIDEO_PRICE_REMINDER,
+        )
+        await ctx.set_state(Funnel.price_reminder)
+        scheduler.schedule(
+            user_id, "price_final", config.FINAL_REMINDER_TIMEOUT,
+            expected_state=Funnel.price_reminder.state,
+        )
+
+
+async def _hdl_price_final(user_id: int) -> None:
+    """Финал: не оплатил 24ч после напоминания о цене."""
+    ctx = await _get_state_ctx(user_id)
+    if await ctx.get_state() == Funnel.price_reminder.state:
+        await _send_step(user_id, MSG_FINAL_REMINDER)
+        await ctx.set_state(Funnel.finished)
 
 
 # ── Вспомогательная отправка шага ─────────────────────────
@@ -185,7 +227,7 @@ async def cmd_start(message: Message, state: FSMContext):
         /start cid_1234567890
     """
     user_id = message.from_user.id
-    _cancel_timeout(user_id)
+    scheduler.cancel(user_id)
     await state.clear()
 
     # Извлекаем ClientId из deep-link (если есть)
@@ -212,8 +254,12 @@ async def cmd_start(message: Message, state: FSMContext):
         )
     )
 
-    # Таймаут 5 сек → автоматически отправляем Вопрос 1
-    async def _on_greeting_timeout():
+    # Таймаут 5 сек → автоматически отправляем Вопрос 1.
+    # Эту короткую задержку не персистируем — потеря при рестарте некритична.
+    # Проверка статуса реализует идемпотентность: если статус уже не greeting — 
+    # значит, пользователь уже продвинулся и отправлять вопрос не нужно.
+    async def _greeting_delay() -> None:
+        await asyncio.sleep(config.GREETING_DELAY)
         ctx = await _get_state_ctx(user_id)
         if await ctx.get_state() == Funnel.greeting.state:
             await _send_step(
@@ -221,7 +267,7 @@ async def cmd_start(message: Message, state: FSMContext):
             )
             await ctx.set_state(Funnel.question_1)
 
-    _schedule_timeout(user_id, config.GREETING_DELAY, _on_greeting_timeout)
+    asyncio.create_task(_greeting_delay())
 
 
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -229,7 +275,7 @@ async def cmd_start(message: Message, state: FSMContext):
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 @router.callback_query(F.data == CB_Q1_YES)
 async def on_q1_yes(callback: CallbackQuery, state: FSMContext):
-    _cancel_timeout(callback.from_user.id)
+    scheduler.cancel(callback.from_user.id)
     await callback.answer()
     await _remove_buttons(callback)
     await state.update_data(ad_worked="Да")
@@ -243,7 +289,7 @@ async def on_q1_yes(callback: CallbackQuery, state: FSMContext):
 
 @router.callback_query(F.data == CB_Q1_NO)
 async def on_q1_no(callback: CallbackQuery, state: FSMContext):
-    _cancel_timeout(callback.from_user.id)
+    scheduler.cancel(callback.from_user.id)
     await callback.answer()
     await _remove_buttons(callback)
     await state.update_data(ad_worked="Нет")
@@ -263,7 +309,7 @@ async def _handle_budget_yes(
 ) -> None:
     """Бюджет достаточный → переход к ключевой цели."""
     user_id = callback.from_user.id
-    _cancel_timeout(user_id)
+    scheduler.cancel(user_id)
     await callback.answer()
     await _remove_buttons(callback)
     await state.update_data(budget_ok="Да")
@@ -274,28 +320,10 @@ async def _handle_budget_yes(
     )
     await state.set_state(Funnel.key_goal)
 
-    # Таймаут 10 мин → напоминание о цели
-    async def _on_goal_timeout():
-        ctx = await _get_state_ctx(user_id)
-        if await ctx.get_state() == Funnel.key_goal.state:
-            await _send_step(
-                user_id, MSG_GOAL_REMINDER, keyboard=KB_GOAL_REMINDER,
-            )
-            await ctx.set_state(Funnel.goal_reminder)
-
-            # 24 ч → финальное напоминание
-            async def _on_goal_final():
-                ctx2 = await _get_state_ctx(user_id)
-                if await ctx2.get_state() == Funnel.goal_reminder.state:
-                    await _send_step(user_id, MSG_FINAL_REMINDER)
-                    await ctx2.set_state(Funnel.finished)
-
-            _schedule_timeout(
-                user_id, config.FINAL_REMINDER_TIMEOUT, _on_goal_final,
-            )
-
-    _schedule_timeout(
-        user_id, config.GOAL_REMINDER_TIMEOUT, _on_goal_timeout,
+    # Таймер 10 мин → напоминание о цели (персистентный)
+    scheduler.schedule(
+        user_id, "goal_reminder", config.GOAL_REMINDER_TIMEOUT,
+        expected_state=Funnel.key_goal.state,
     )
 
 
@@ -303,7 +331,7 @@ async def _handle_budget_no(
     callback: CallbackQuery, state: FSMContext,
 ) -> None:
     """Бюджет недостаточный → отказ."""
-    _cancel_timeout(callback.from_user.id)
+    scheduler.cancel(callback.from_user.id)
     await callback.answer()
     await _remove_buttons(callback)
     await state.update_data(budget_ok="Нет")
@@ -347,7 +375,7 @@ async def on_reject_apply(callback: CallbackQuery, state: FSMContext):
 @router.message(Funnel.key_goal)
 async def on_key_goal_text(message: Message, state: FSMContext):
     """Пользователь написал текстом свою ключевую цель."""
-    _cancel_timeout(message.from_user.id)
+    scheduler.cancel(message.from_user.id)
     await state.update_data(key_goal=message.text)
     await _send_access_request(message.from_user.id, state)
 
@@ -357,7 +385,7 @@ async def on_key_goal_text(message: Message, state: FSMContext):
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 @router.callback_query(F.data == CB_GOAL_AUDIT)
 async def on_goal_audit(callback: CallbackQuery, state: FSMContext):
-    _cancel_timeout(callback.from_user.id)
+    scheduler.cancel(callback.from_user.id)
     await callback.answer()
     await _remove_buttons(callback)
     await state.update_data(key_goal="(не указана — перешёл к аудиту)")
@@ -379,28 +407,10 @@ async def _send_access_request(
     )
     await state.set_state(Funnel.access_request)
 
-    # Таймаут 10 мин → напоминание о доступе
-    async def _on_access_timeout():
-        ctx = await _get_state_ctx(user_id)
-        if await ctx.get_state() == Funnel.access_request.state:
-            await _send_step(
-                user_id, MSG_ACCESS_REMINDER, keyboard=KB_ACCESS_REMINDER,
-            )
-            await ctx.set_state(Funnel.access_reminder)
-
-            # 24 ч → финальное напоминание
-            async def _on_access_final():
-                ctx2 = await _get_state_ctx(user_id)
-                if await ctx2.get_state() == Funnel.access_reminder.state:
-                    await _send_step(user_id, MSG_FINAL_REMINDER)
-                    await ctx2.set_state(Funnel.finished)
-
-            _schedule_timeout(
-                user_id, config.FINAL_REMINDER_TIMEOUT, _on_access_final,
-            )
-
-    _schedule_timeout(
-        user_id, config.ACCESS_REMINDER_TIMEOUT, _on_access_timeout,
+    # Таймер 10 мин → напоминание о доступе (персистентный)
+    scheduler.schedule(
+        user_id, "access_reminder", config.ACCESS_REMINDER_TIMEOUT,
+        expected_state=Funnel.access_request.state,
     )
 
 
@@ -409,7 +419,7 @@ async def _send_access_request(
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 @router.callback_query(F.data == CB_ACCESS_YES)
 async def on_access_yes(callback: CallbackQuery, state: FSMContext):
-    _cancel_timeout(callback.from_user.id)
+    scheduler.cancel(callback.from_user.id)
     await callback.answer()
     await _remove_buttons(callback)
     await _send_price(callback.from_user.id, state)
@@ -417,7 +427,7 @@ async def on_access_yes(callback: CallbackQuery, state: FSMContext):
 
 @router.callback_query(F.data == CB_ACCESS_REM_YES)
 async def on_access_rem_yes(callback: CallbackQuery, state: FSMContext):
-    _cancel_timeout(callback.from_user.id)
+    scheduler.cancel(callback.from_user.id)
     await callback.answer()
     await _remove_buttons(callback)
     await _send_price(callback.from_user.id, state)
@@ -441,31 +451,10 @@ async def _send_price(user_id: int, state: FSMContext) -> None:
     )
     await state.set_state(Funnel.price)
 
-    # Таймаут 24 ч → напоминание о цене
-    async def _on_price_timeout():
-        ctx = await _get_state_ctx(user_id)
-        if await ctx.get_state() == Funnel.price.state:
-            await _send_step(
-                user_id,
-                MSG_PRICE_REMINDER,
-                keyboard=KB_PRICE_REMINDER,
-                video=config.VIDEO_PRICE_REMINDER,
-            )
-            await ctx.set_state(Funnel.price_reminder)
-
-            # 24 ч → финальное напоминание
-            async def _on_price_final():
-                ctx2 = await _get_state_ctx(user_id)
-                if await ctx2.get_state() == Funnel.price_reminder.state:
-                    await _send_step(user_id, MSG_FINAL_REMINDER)
-                    await ctx2.set_state(Funnel.finished)
-
-            _schedule_timeout(
-                user_id, config.FINAL_REMINDER_TIMEOUT, _on_price_final,
-            )
-
-    _schedule_timeout(
-        user_id, config.PRICE_REMINDER_TIMEOUT, _on_price_timeout,
+    # Таймер 24ч → напоминание о цене (персистентный)
+    scheduler.schedule(
+        user_id, "price_reminder", config.PRICE_REMINDER_TIMEOUT,
+        expected_state=Funnel.price.state,
     )
 
 
@@ -479,7 +468,7 @@ async def on_price_yes(callback: CallbackQuery, state: FSMContext):
 
 @router.callback_query(F.data == CB_PRICE_NO)
 async def on_price_no(callback: CallbackQuery, state: FSMContext):
-    _cancel_timeout(callback.from_user.id)
+    scheduler.cancel(callback.from_user.id)
     await callback.answer()
     await _remove_buttons(callback)
     await _send_step(
@@ -517,7 +506,7 @@ async def _send_lead_short(
 ) -> None:
     """Сообщение 13 — Заявка принята (короткая)."""
     user_id = callback.from_user.id
-    _cancel_timeout(user_id)
+    scheduler.cancel(user_id)
     await callback.answer()
     await _remove_buttons(callback)
     await _request_phone(user_id, state, lead_type="short")
@@ -528,7 +517,7 @@ async def _send_lead_requisites(
 ) -> None:
     """Сообщение 14 — Заявка принята (с реквизитами)."""
     user_id = callback.from_user.id
-    _cancel_timeout(user_id)
+    scheduler.cancel(user_id)
     await callback.answer()
     await _remove_buttons(callback)
     await _request_phone(user_id, state, lead_type="requisites")
@@ -664,6 +653,26 @@ async def main():
             "точно скопированным из @BotFather."
         )
         return
+
+    # ── Персистентный планировщик ─────────────────────────
+    # Регистрируем обработчики напоминаний (имя → функция).
+    scheduler.register_handler("goal_reminder", _hdl_goal_reminder)
+    scheduler.register_handler("goal_final", _hdl_goal_final)
+    scheduler.register_handler("access_reminder", _hdl_access_reminder)
+    scheduler.register_handler("access_final", _hdl_access_final)
+    scheduler.register_handler("price_reminder", _hdl_price_reminder)
+    scheduler.register_handler("price_final", _hdl_price_final)
+
+    # Callback для восстановления FSM-состояния после рестарта.
+    async def _restore_fsm_state(user_id: int, state: str) -> None:
+        ctx = await _get_state_ctx(user_id)
+        await ctx.set_state(state)
+
+    scheduler.set_state_restorer(_restore_fsm_state)
+
+    # Восстанавливаем отложенные напоминания из reminders.json.
+    await scheduler.restore_on_startup()
+
     await dp.start_polling(bot)
 
 

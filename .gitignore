@@ -55,6 +55,9 @@ Thumbs.db
 *.log
 logs/
 
+# Runtime state (не коммитить — генерируется автоматически на VDS)
+reminders.json
+
 # Package managers
 .pip_requires
 poetry.lock
