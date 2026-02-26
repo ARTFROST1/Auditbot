@@ -15,6 +15,7 @@ load_dotenv(dotenv_path=_dotenv_path, override=True)
 # ── Telegram ──────────────────────────────────────────────
 BOT_TOKEN: str = os.getenv("BOT_TOKEN", "")
 ADMIN_CHAT_ID: str = os.getenv("ADMIN_CHAT_ID", "")  # ID чата для уведомлений о лидах
+ADMIN_USER_ID: str = os.getenv("ADMIN_USER_ID", "")  # ID админа (личка) для debug-команд/ответов
 
 # ── Яндекс.Метрика ───────────────────────────────────────
 METRIKA_TOKEN: str = os.getenv("METRIKA_TOKEN", "")
@@ -34,13 +35,13 @@ FINAL_REMINDER_TIMEOUT: int = int(os.getenv("FINAL_REMINDER_TIMEOUT", "300"))   
 # Если нужно отправить «кружок» (video_note) — используйте префикс:
 #   VIDEO_GREETING=note:<file_id>
 #   VIDEO_GREETING=video_note:<file_id>
-VIDEO_GREETING: str = os.getenv("VIDEO_GREETING", "")              # «Кто я, есть ли цель у аккаунта» — приветствие
-VIDEO_KEY_GOAL: str = os.getenv("VIDEO_KEY_GOAL", "")              # «Три уровня аудита» — ключевая цель
-VIDEO_GOAL_REMINDER: str = os.getenv("VIDEO_GOAL_REMINDER", "")    # «Аудит — идеи, не критика» — напоминание о цели
-VIDEO_ABOUT_ME: str = os.getenv("VIDEO_ABOUT_ME", "")              # «О себе / экспертиза» — отказ и напоминание о доступе
-VIDEO_ACCESS_INSTRUCTION: str = os.getenv("VIDEO_ACCESS_INSTRUCTION", "")  # «Ваши данные — только ваши» — запрос доступа
-VIDEO_WHY_PAID: str = os.getenv("VIDEO_WHY_PAID", "")              # «Почему аудит платный» — стоимость
-VIDEO_PRICE_REMINDER: str = os.getenv("VIDEO_PRICE_REMINDER", "")  # «Лотерейный билет» — напоминание о цене
+VIDEO_GREETING: str = os.getenv("VIDEO_GREETING", "")              # Видео 1 — «Кто я, есть ли цель у аккаунта» — приветствие
+VIDEO_KEY_GOAL: str = os.getenv("VIDEO_KEY_GOAL", "")              # Видео 2 — «Три уровня аудита» — ключевая цель
+VIDEO_ACCESS_INSTRUCTION: str = os.getenv("VIDEO_ACCESS_INSTRUCTION", "")  # Видео 3 — «Ваши данные — только ваши» — запрос доступа
+VIDEO_GOAL_REMINDER: str = os.getenv("VIDEO_GOAL_REMINDER", "")    # Видео 4 — «Аудит — идеи, не критика» — напоминание о цели
+VIDEO_ABOUT_ME: str = os.getenv("VIDEO_ABOUT_ME", "")              # Видео 5 — «О себе / экспертиза» — отказ и напоминание о доступе
+VIDEO_WHY_PAID: str = os.getenv("VIDEO_WHY_PAID", "")              # Видео 6 — «Почему аудит платный» — стоимость
+VIDEO_PRICE_REMINDER: str = os.getenv("VIDEO_PRICE_REMINDER", "")  # Видео 7 — «Лотерейный билет» — напоминание о цене
 
 # ── Ссылки ────────────────────────────────────────────────
 TG_CHANNEL_LINK: str = os.getenv("TG_CHANNEL_LINK", "https://t.me/kirill_i_ta")

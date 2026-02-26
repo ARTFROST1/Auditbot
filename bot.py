@@ -626,13 +626,26 @@ async def _notify_admin(data: dict, *, lead_type: str) -> None:
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 class _IsAdminChat(BaseFilter):
     async def __call__(self, message: Message) -> bool:
-        if not config.ADMIN_CHAT_ID:
-            return False
-        try:
-            admin_id = int(str(config.ADMIN_CHAT_ID).strip())
-        except ValueError:
-            return False
-        return message.chat.id == admin_id
+        # Поддерживаем 2 сценария:
+        # 1) ADMIN_CHAT_ID: чат/группа для уведомлений (chat.id)
+        # 2) ADMIN_USER_ID: ваш личный user id для debug (from_user.id)
+        admin_chat_ok = False
+        if config.ADMIN_CHAT_ID:
+            try:
+                admin_chat_id = int(str(config.ADMIN_CHAT_ID).strip())
+                admin_chat_ok = message.chat.id == admin_chat_id
+            except ValueError:
+                admin_chat_ok = False
+
+        admin_user_ok = False
+        if config.ADMIN_USER_ID and message.from_user is not None:
+            try:
+                admin_user_id = int(str(config.ADMIN_USER_ID).strip())
+                admin_user_ok = message.from_user.id == admin_user_id
+            except ValueError:
+                admin_user_ok = False
+
+        return admin_chat_ok or admin_user_ok
 
 
 @router.message(_IsAdminChat(), F.video)
@@ -658,6 +671,22 @@ async def admin_get_video_note_file_id(message: Message) -> None:
         "Можно вставить в .env так:\n"
         f"VIDEO_KEY_GOAL=note:{file_id}\n\n"
         f"file_unique_id: {unique_id}",
+    )
+
+
+@router.message(_IsAdminChat(), F.document)
+async def admin_get_document_file_id(message: Message) -> None:
+    # Если видео отправили «как файл», Telegram отдаёт его как document.
+    doc = message.document
+    mime = (doc.mime_type or "").lower()
+    if not mime.startswith("video/"):
+        return
+    await message.answer(
+        "file_id (document video):\n"
+        f"{doc.file_id}\n\n"
+        "Можно вставить в .env так:\n"
+        f"VIDEO_KEY_GOAL={doc.file_id}\n\n"
+        f"mime_type: {doc.mime_type}",
     )
 
 
