@@ -165,6 +165,17 @@ uv run bot.py
    VIDEO_KEY_GOAL=BAACAgIAAxkBAAI...
    ```
 
+### Кружок (video_note)
+
+Если нужно, чтобы бот прислал видео в формате «кружка» (Telegram video_note),
+используйте префикс `note:` (или `video_note:`) перед `file_id`:
+
+```
+VIDEO_KEY_GOAL=note:BAACAgIAAxkBAAI...
+```
+
+Без префикса бот отправляет обычное видео через `send_video`.
+
 Если переменная пуста — видео не отправляется, показывается только текст.
 
 ## Деплой на VDS

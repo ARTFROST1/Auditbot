@@ -9,7 +9,7 @@ import asyncio
 
 from aiogram import Bot, Dispatcher, F, Router
 from aiogram.exceptions import TelegramUnauthorizedError
-from aiogram.filters import CommandStart
+from aiogram.filters import BaseFilter, CommandStart
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
 from aiogram.fsm.storage.base import StorageKey
@@ -127,7 +127,10 @@ async def _hdl_goal_reminder(user_id: int) -> None:
     """Напоминание: не ответил о ключевой цели (10 мин → шаг goal_reminder)."""
     ctx = await _get_state_ctx(user_id)
     if await ctx.get_state() == Funnel.key_goal.state:
-        await _send_step(user_id, MSG_GOAL_REMINDER, keyboard=KB_GOAL_REMINDER)
+        await _send_step(
+            user_id, MSG_GOAL_REMINDER, keyboard=KB_GOAL_REMINDER,
+            video=config.VIDEO_GOAL_REMINDER,
+        )
         await ctx.set_state(Funnel.goal_reminder)
         scheduler.schedule(
             user_id, "goal_final", config.FINAL_REMINDER_TIMEOUT,
@@ -149,6 +152,7 @@ async def _hdl_access_reminder(user_id: int) -> None:
     if await ctx.get_state() == Funnel.access_request.state:
         await _send_step(
             user_id, MSG_ACCESS_REMINDER, keyboard=KB_ACCESS_REMINDER,
+            video=config.VIDEO_ABOUT_ME,
         )
         await ctx.set_state(Funnel.access_reminder)
         scheduler.schedule(
@@ -199,10 +203,19 @@ async def _send_step(
 ) -> None:
     """Отправить сообщение воронки, при наличии — с видео перед ним."""
     if video:
+        payload = video.strip()
         try:
-            await bot.send_video(chat_id, video)
+            # Поддержка кружка (video_note) через префикс в .env:
+            #   VIDEO_KEY_GOAL=note:<file_id>
+            # По умолчанию (без префикса) отправляем обычное видео.
+            if payload.startswith(("note:", "video_note:")):
+                file_id = payload.split(":", 1)[1].strip()
+                if file_id:
+                    await bot.send_video_note(chat_id, file_id)
+            else:
+                await bot.send_video(chat_id, payload)
         except Exception as e:
-            logger.warning(f"Не удалось отправить видео: {e}")
+            logger.warning(f"Не удалось отправить видео/кружок: {e}")
     await bot.send_message(
         chat_id, text, parse_mode="HTML", reply_markup=keyboard,
     )
@@ -243,9 +256,9 @@ async def cmd_start(message: Message, state: FSMContext):
         full_name=message.from_user.full_name or "",
     )
 
-    # Отправляем приветствие
+    # Отправляем приветствие (+ видео-визитка, если задано)
     await state.set_state(Funnel.greeting)
-    await message.answer(MSG_GREETING, parse_mode="HTML")
+    await _send_step(user_id, MSG_GREETING, video=config.VIDEO_GREETING)
 
     # Метрика: бот запущен
     asyncio.create_task(
@@ -337,6 +350,7 @@ async def _handle_budget_no(
     await state.update_data(budget_ok="Нет")
     await _send_step(
         callback.from_user.id, MSG_REJECT, keyboard=KB_REJECT,
+        video=config.VIDEO_ABOUT_ME,
     )
     await state.set_state(Funnel.reject)
 
@@ -605,6 +619,46 @@ async def _notify_admin(data: dict, *, lead_type: str) -> None:
         )
     except Exception as e:
         logger.error(f"Не удалось уведомить админа: {e}")
+
+
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+#  Admin debug: получить file_id медиа
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+class _IsAdminChat(BaseFilter):
+    async def __call__(self, message: Message) -> bool:
+        if not config.ADMIN_CHAT_ID:
+            return False
+        try:
+            admin_id = int(str(config.ADMIN_CHAT_ID).strip())
+        except ValueError:
+            return False
+        return message.chat.id == admin_id
+
+
+@router.message(_IsAdminChat(), F.video)
+async def admin_get_video_file_id(message: Message) -> None:
+    file_id = message.video.file_id
+    unique_id = message.video.file_unique_id
+    await message.answer(
+        "file_id (video):\n"
+        f"{file_id}\n\n"
+        "Можно вставить в .env так:\n"
+        f"VIDEO_KEY_GOAL={file_id}\n\n"
+        f"file_unique_id: {unique_id}",
+    )
+
+
+@router.message(_IsAdminChat(), F.video_note)
+async def admin_get_video_note_file_id(message: Message) -> None:
+    file_id = message.video_note.file_id
+    unique_id = message.video_note.file_unique_id
+    await message.answer(
+        "file_id (video_note / кружок):\n"
+        f"{file_id}\n\n"
+        "Можно вставить в .env так:\n"
+        f"VIDEO_KEY_GOAL=note:{file_id}\n\n"
+        f"file_unique_id: {unique_id}",
+    )
 
 
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━

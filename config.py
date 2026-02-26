@@ -30,10 +30,17 @@ PRICE_REMINDER_TIMEOUT: int = int(os.getenv("PRICE_REMINDER_TIMEOUT", "300"))   
 FINAL_REMINDER_TIMEOUT: int = int(os.getenv("FINAL_REMINDER_TIMEOUT", "300"))    # 24 ч
 
 # ── Медиа (file_id / URL видео — заполнить позже) ────────
-VIDEO_KEY_GOAL: str = os.getenv("VIDEO_KEY_GOAL", "")              # «Что такое ключевая цель»
-VIDEO_ACCESS_INSTRUCTION: str = os.getenv("VIDEO_ACCESS_INSTRUCTION", "")  # Инструкция по доступу
-VIDEO_WHY_PAID: str = os.getenv("VIDEO_WHY_PAID", "")              # «Почему аудит платный»
-VIDEO_PRICE_REMINDER: str = os.getenv("VIDEO_PRICE_REMINDER", "")  # Видео к напоминанию о цене
+# По умолчанию переменные VIDEO_* отправляются как обычное видео (send_video).
+# Если нужно отправить «кружок» (video_note) — используйте префикс:
+#   VIDEO_GREETING=note:<file_id>
+#   VIDEO_GREETING=video_note:<file_id>
+VIDEO_GREETING: str = os.getenv("VIDEO_GREETING", "")              # «Кто я, есть ли цель у аккаунта» — приветствие
+VIDEO_KEY_GOAL: str = os.getenv("VIDEO_KEY_GOAL", "")              # «Три уровня аудита» — ключевая цель
+VIDEO_GOAL_REMINDER: str = os.getenv("VIDEO_GOAL_REMINDER", "")    # «Аудит — идеи, не критика» — напоминание о цели
+VIDEO_ABOUT_ME: str = os.getenv("VIDEO_ABOUT_ME", "")              # «О себе / экспертиза» — отказ и напоминание о доступе
+VIDEO_ACCESS_INSTRUCTION: str = os.getenv("VIDEO_ACCESS_INSTRUCTION", "")  # «Ваши данные — только ваши» — запрос доступа
+VIDEO_WHY_PAID: str = os.getenv("VIDEO_WHY_PAID", "")              # «Почему аудит платный» — стоимость
+VIDEO_PRICE_REMINDER: str = os.getenv("VIDEO_PRICE_REMINDER", "")  # «Лотерейный билет» — напоминание о цене
 
 # ── Ссылки ────────────────────────────────────────────────
 TG_CHANNEL_LINK: str = os.getenv("TG_CHANNEL_LINK", "https://t.me/kirill_i_ta")
