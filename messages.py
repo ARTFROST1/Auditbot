@@ -146,9 +146,6 @@ MSG_GOAL_REMINDER = (
     "Пожалуйста, напишите в ответ 1 фразой, что сейчас для вас главное "
     "в рекламе. Даже если формулировка пока грубая — это нормально.\n"
     "\n"
-    "<i>Примеры: «Больше заявок», «Снизить CPL», «Рост продаж», "
-    "«Увеличить выручку», «Повысить долю брендового трафика».</i>\n"
-    "\n"
     "Если ключевой цели аккаунта нет — значит, "
     "аудит жизненно необходим.\n"
     "Так и напишите: «Цели нет» — "
@@ -315,7 +312,7 @@ MSG_LEAD_SHORT = (
     f"\n"
     f"А пока подписывайтесь на ТГ-канал — "
     f"там много полезного про Директ:\n"
-    f"👉 {config.TG_CHANNEL_HANDLE}"
+    f"👇 Нажмите кнопку ниже"
 )
 
 
@@ -332,7 +329,7 @@ MSG_LEAD_REQUISITES = (
     f"\n"
     f"А пока подписывайтесь на ТГ-канал — "
     f"там много полезного про Директ:\n"
-    f"👉 {config.TG_CHANNEL_HANDLE}"
+    f"👇 Нажмите кнопку ниже"
 )
 
 
@@ -384,10 +381,12 @@ def admin_notification(
     key_goal: str,
     phone: str,
     lead_type: str,
+    channel_subscribed: bool | None,
 ) -> str:
     """Формирует текст уведомления админу о новой заявке."""
     user_link = f"@{username}" if username else f"tg://user?id={tg_user_id}"
     phone_line = f"📱 Телефон: <b>{phone}</b>" if phone else "📱 Телефон: <i>не указан</i>"
+    sub_mark = "✅" if channel_subscribed else "❌"
     return (
         f"🔔 <b>Новая заявка из Auditbot!</b>\n"
         f"\n"
@@ -398,6 +397,7 @@ def admin_notification(
         f"📊 Реклама работала: <b>{ad_worked}</b>\n"
         f"💰 Бюджет достаточный: <b>{budget_ok}</b>\n"
         f"🔑 Ключевая цель: <b>{key_goal}</b>\n"
+        f"📢 Подписан на канал: <b>{sub_mark}</b>\n"
         f"\n"
         f"📝 Тип заявки: <b>{lead_type}</b>"
     )
