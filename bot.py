@@ -639,28 +639,23 @@ async def _finalize_lead(user_id: int, state: FSMContext) -> None:
         msg = MSG_LEAD_SHORT
         lead_type_label = "Запрос связи"
 
-    # Убираем reply-клавиатуру (которая просила контакт).
-    # Inline-клавиатуру нельзя отправить одновременно с ReplyKeyboardRemove,
-    # поэтому сначала снимаем reply-клавиатуру, затем отправляем сообщение
-    # с inline-кнопкой на канал.
-    tmp_msg = None
-    try:
-        tmp_msg = await bot.send_message(user_id, "⏳", reply_markup=KB_PHONE_REMOVE)
-    except Exception:
-        tmp_msg = None
-
-    await bot.send_message(
+    # Сначала гарантированно убираем reply-клавиатуру (которая просила контакт),
+    # затем добавляем inline-кнопку редактированием reply_markup этого же сообщения.
+    final_msg = await bot.send_message(
         user_id,
         msg,
         parse_mode="HTML",
-        reply_markup=kb_channel_link(),
+        reply_markup=KB_PHONE_REMOVE,
     )
 
-    if tmp_msg is not None:
-        try:
-            await bot.delete_message(user_id, tmp_msg.message_id)
-        except Exception:
-            pass
+    try:
+        await bot.edit_message_reply_markup(
+            chat_id=user_id,
+            message_id=final_msg.message_id,
+            reply_markup=kb_channel_link(),
+        )
+    except Exception:
+        pass
     await state.set_state(Funnel.finished)
 
     # Метрика: заявка получена
