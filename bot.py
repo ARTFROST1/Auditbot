@@ -8,7 +8,11 @@
 import asyncio
 
 from aiogram import Bot, Dispatcher, F, Router
-from aiogram.exceptions import TelegramUnauthorizedError
+from aiogram.exceptions import (
+    TelegramBadRequest,
+    TelegramForbiddenError,
+    TelegramUnauthorizedError,
+)
 from aiogram.filters import BaseFilter, CommandStart
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
@@ -29,6 +33,7 @@ from messages import (
     CB_PRICE_REM_PAY,
     CB_PRICE_REM_WRITE,
     CB_PRICE_YES,
+        CB_SUB_CHECK,
     CB_Q1_NO,
     CB_Q1_YES,
     CB_Q2_100K_NO,
@@ -38,7 +43,6 @@ from messages import (
     CB_REJECT_APPLY,
     KB_ACCESS_REMINDER,
     KB_ACCESS_REQUEST,
-    KB_GOAL_REMINDER,
     KB_INDIVIDUAL,
     KB_PHONE_REMOVE,
     KB_PHONE_REQUEST,
@@ -59,6 +63,7 @@ from messages import (
     MSG_LEAD_SHORT,
     MSG_PHONE_REQUEST,
     MSG_PRICE,
+    MSG_PRICE_DISCOUNTED,
     MSG_PRICE_REMINDER,
     MSG_QUESTION_1,
     MSG_QUESTION_2_100K,
@@ -128,7 +133,7 @@ async def _hdl_goal_reminder(user_id: int) -> None:
     ctx = await _get_state_ctx(user_id)
     if await ctx.get_state() == Funnel.key_goal.state:
         await _send_step(
-            user_id, MSG_GOAL_REMINDER, keyboard=KB_GOAL_REMINDER,
+            user_id, MSG_GOAL_REMINDER,
             video=config.VIDEO_GOAL_REMINDER,
         )
         await ctx.set_state(Funnel.goal_reminder)
@@ -139,7 +144,7 @@ async def _hdl_goal_reminder(user_id: int) -> None:
 
 
 async def _hdl_goal_final(user_id: int) -> None:
-    """Финал: не нажал кнопку 24ч после напоминания о цели."""
+    """Финал: не ответил 24ч после напоминания о цели."""
     ctx = await _get_state_ctx(user_id)
     if await ctx.get_state() == Funnel.goal_reminder.state:
         await _send_step(user_id, MSG_FINAL_REMINDER)
@@ -390,7 +395,15 @@ async def on_reject_apply(callback: CallbackQuery, state: FSMContext):
 async def on_key_goal_text(message: Message, state: FSMContext):
     """Пользователь написал текстом свою ключевую цель."""
     scheduler.cancel(message.from_user.id)
-    await state.update_data(key_goal=message.text)
+    await state.update_data(key_goal=(message.text or "").strip())
+    await _send_access_request(message.from_user.id, state)
+
+
+@router.message(Funnel.goal_reminder)
+async def on_goal_reminder_text(message: Message, state: FSMContext):
+    """Пользователь ответил текстом на напоминание о ключевой цели."""
+    scheduler.cancel(message.from_user.id)
+    await state.update_data(key_goal=(message.text or "").strip())
     await _send_access_request(message.from_user.id, state)
 
 
@@ -399,11 +412,18 @@ async def on_key_goal_text(message: Message, state: FSMContext):
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 @router.callback_query(F.data == CB_GOAL_AUDIT)
 async def on_goal_audit(callback: CallbackQuery, state: FSMContext):
-    scheduler.cancel(callback.from_user.id)
+    # Legacy: раньше кнопка "Перейти к аудиту" пускала дальше без цели.
+    # Теперь по нажатию остаёмся на шаге цели и ждём текстовый ответ.
+    user_id = callback.from_user.id
+    scheduler.cancel(user_id)
     await callback.answer()
     await _remove_buttons(callback)
-    await state.update_data(key_goal="(не указана — перешёл к аудиту)")
-    await _send_access_request(callback.from_user.id, state)
+    await _send_step(user_id, MSG_GOAL_REMINDER)
+    await state.set_state(Funnel.goal_reminder)
+    scheduler.schedule(
+        user_id, "goal_final", config.FINAL_REMINDER_TIMEOUT,
+        expected_state=Funnel.goal_reminder.state,
+    )
 
 
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -457,9 +477,11 @@ async def on_access_rem_write(callback: CallbackQuery, state: FSMContext):
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 async def _send_price(user_id: int, state: FSMContext) -> None:
     """Показать сообщение 10 — стоимость аудита."""
+    data = await state.get_data()
+    text = MSG_PRICE_DISCOUNTED if data.get("channel_subscribed") else MSG_PRICE
     await _send_step(
         user_id,
-        MSG_PRICE,
+        text,
         keyboard=KB_PRICE,
         video=config.VIDEO_WHY_PAID,
     )
@@ -470,6 +492,62 @@ async def _send_price(user_id: int, state: FSMContext) -> None:
         user_id, "price_reminder", config.PRICE_REMINDER_TIMEOUT,
         expected_state=Funnel.price.state,
     )
+
+
+def _channel_chat_id() -> str:
+    handle = (config.TG_CHANNEL_HANDLE or "").strip()
+    if not handle:
+        return ""
+    return handle if handle.startswith("@") else f"@{handle}"
+
+
+@router.callback_query(F.data == CB_SUB_CHECK)
+async def on_sub_check(callback: CallbackQuery, state: FSMContext):
+    """Проверка подписки на ТГ-канал, чтобы применить скидку."""
+    user_id = callback.from_user.id
+    chat_id = _channel_chat_id()
+    if not chat_id:
+        await callback.answer(
+            "Не настроен канал для проверки подписки.",
+            show_alert=True,
+        )
+        return
+
+    try:
+        member = await bot.get_chat_member(chat_id=chat_id, user_id=user_id)
+        status = getattr(member, "status", "")
+        status_value = getattr(status, "value", None) or str(status)
+        is_subscribed = status_value in {"member", "administrator", "creator"}
+    except (TelegramForbiddenError, TelegramBadRequest) as e:
+        logger.warning(f"Не удалось проверить подписку (chat_id={chat_id}): {e}")
+        await callback.answer(
+            "Не удалось проверить подписку. "
+            "Обычно бот должен быть админом канала, чтобы проверять участников.",
+            show_alert=True,
+        )
+        return
+    except Exception as e:
+        logger.exception(f"Ошибка проверки подписки: {e}")
+        await callback.answer("Ошибка проверки подписки. Попробуйте позже.", show_alert=True)
+        return
+
+    if not is_subscribed:
+        await callback.answer(
+            "Подписку не вижу. Подпишитесь на канал и нажмите «Проверить подписку».",
+            show_alert=True,
+        )
+        return
+
+    await state.update_data(channel_subscribed=True)
+    await callback.answer("Подписка подтверждена — цена со скидкой 8 000 ₽.")
+    try:
+        await callback.message.edit_text(
+            MSG_PRICE_DISCOUNTED,
+            parse_mode="HTML",
+            reply_markup=KB_PRICE,
+        )
+    except Exception:
+        pass
 
 
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
