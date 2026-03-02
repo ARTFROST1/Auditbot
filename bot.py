@@ -137,6 +137,11 @@ async def _hdl_goal_reminder(user_id: int) -> None:
             video=config.VIDEO_GOAL_REMINDER,
         )
         await ctx.set_state(Funnel.goal_reminder)
+        # Метрика: напоминание о цели (не ответил 10 мин)
+        data = await ctx.get_data()
+        asyncio.create_task(
+            MetrikaService.send_conversion(data.get("client_id"), config.GOAL_NO_TARGET, user_id)
+        )
         scheduler.schedule(
             user_id, "goal_final", config.FINAL_REMINDER_TIMEOUT,
             expected_state=Funnel.goal_reminder.state,
@@ -149,6 +154,11 @@ async def _hdl_goal_final(user_id: int) -> None:
     if await ctx.get_state() == Funnel.goal_reminder.state:
         await _send_step(user_id, MSG_FINAL_REMINDER)
         await ctx.set_state(Funnel.finished)
+        # Метрика: финальное напоминание — нет реакции
+        data = await ctx.get_data()
+        asyncio.create_task(
+            MetrikaService.send_conversion(data.get("client_id"), config.GOAL_NO_REACTION, user_id)
+        )
 
 
 async def _hdl_access_reminder(user_id: int) -> None:
@@ -160,6 +170,11 @@ async def _hdl_access_reminder(user_id: int) -> None:
             video=config.VIDEO_ABOUT_ME,
         )
         await ctx.set_state(Funnel.access_reminder)
+        # Метрика: напоминание о доступе (не выдал 10 мин)
+        data = await ctx.get_data()
+        asyncio.create_task(
+            MetrikaService.send_conversion(data.get("client_id"), config.GOAL_NO_ACCESS, user_id)
+        )
         scheduler.schedule(
             user_id, "access_final", config.FINAL_REMINDER_TIMEOUT,
             expected_state=Funnel.access_reminder.state,
@@ -172,6 +187,11 @@ async def _hdl_access_final(user_id: int) -> None:
     if await ctx.get_state() == Funnel.access_reminder.state:
         await _send_step(user_id, MSG_FINAL_REMINDER)
         await ctx.set_state(Funnel.finished)
+        # Метрика: финальное напоминание — нет реакции
+        data = await ctx.get_data()
+        asyncio.create_task(
+            MetrikaService.send_conversion(data.get("client_id"), config.GOAL_NO_REACTION, user_id)
+        )
 
 
 async def _hdl_price_reminder(user_id: int) -> None:
@@ -185,6 +205,11 @@ async def _hdl_price_reminder(user_id: int) -> None:
             video=config.VIDEO_PRICE_REMINDER,
         )
         await ctx.set_state(Funnel.price_reminder)
+        # Метрика: напоминание о цене (24ч без реакции)
+        data = await ctx.get_data()
+        asyncio.create_task(
+            MetrikaService.send_conversion(data.get("client_id"), config.GOAL_HIGH_PRICE, user_id)
+        )
         scheduler.schedule(
             user_id, "price_final", config.FINAL_REMINDER_TIMEOUT,
             expected_state=Funnel.price_reminder.state,
@@ -197,6 +222,11 @@ async def _hdl_price_final(user_id: int) -> None:
     if await ctx.get_state() == Funnel.price_reminder.state:
         await _send_step(user_id, MSG_FINAL_REMINDER)
         await ctx.set_state(Funnel.finished)
+        # Метрика: финальное напоминание — нет реакции
+        data = await ctx.get_data()
+        asyncio.create_task(
+            MetrikaService.send_conversion(data.get("client_id"), config.GOAL_NO_REACTION, user_id)
+        )
 
 
 # ── Вспомогательная отправка шага ─────────────────────────
@@ -253,6 +283,7 @@ async def cmd_start(message: Message, state: FSMContext):
     args = message.text.split(maxsplit=1)
     if len(args) > 1 and args[1].startswith("cid_"):
         client_id = args[1][4:]
+        logger.info(f"ClientId из deep-link получен: {client_id} (tg_user_id={user_id})")
 
     await state.update_data(
         client_id=client_id,
@@ -284,6 +315,10 @@ async def cmd_start(message: Message, state: FSMContext):
                 user_id, MSG_QUESTION_1, keyboard=KB_QUESTION_1,
             )
             await ctx.set_state(Funnel.question_1)
+            # Метрика: вопрос 1 показан
+            asyncio.create_task(
+                MetrikaService.send_conversion(client_id, config.GOAL_STEP1, user_id)
+            )
 
     asyncio.create_task(_greeting_delay())
 
@@ -293,30 +328,42 @@ async def cmd_start(message: Message, state: FSMContext):
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 @router.callback_query(F.data == CB_Q1_YES)
 async def on_q1_yes(callback: CallbackQuery, state: FSMContext):
-    scheduler.cancel(callback.from_user.id)
+    user_id = callback.from_user.id
+    scheduler.cancel(user_id)
     await callback.answer()
     await _remove_buttons(callback)
     await state.update_data(ad_worked="Да")
     await _send_step(
-        callback.from_user.id,
+        user_id,
         MSG_QUESTION_2_50K,
         keyboard=KB_QUESTION_2_50K,
     )
     await state.set_state(Funnel.question_2_50k)
+    # Метрика: вопрос 2 показан
+    data = await state.get_data()
+    asyncio.create_task(
+        MetrikaService.send_conversion(data.get("client_id"), config.GOAL_STEP2, user_id)
+    )
 
 
 @router.callback_query(F.data == CB_Q1_NO)
 async def on_q1_no(callback: CallbackQuery, state: FSMContext):
-    scheduler.cancel(callback.from_user.id)
+    user_id = callback.from_user.id
+    scheduler.cancel(user_id)
     await callback.answer()
     await _remove_buttons(callback)
     await state.update_data(ad_worked="Нет")
     await _send_step(
-        callback.from_user.id,
+        user_id,
         MSG_QUESTION_2_100K,
         keyboard=KB_QUESTION_2_100K,
     )
     await state.set_state(Funnel.question_2_100k)
+    # Метрика: вопрос 2 показан
+    data = await state.get_data()
+    asyncio.create_task(
+        MetrikaService.send_conversion(data.get("client_id"), config.GOAL_STEP2, user_id)
+    )
 
 
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -337,6 +384,11 @@ async def _handle_budget_yes(
         user_id, MSG_KEY_GOAL, video=config.VIDEO_KEY_GOAL,
     )
     await state.set_state(Funnel.key_goal)
+    # Метрика: ключевая цель показана
+    data = await state.get_data()
+    asyncio.create_task(
+        MetrikaService.send_conversion(data.get("client_id"), config.GOAL_STEP3, user_id)
+    )
 
     # Таймер 10 мин → напоминание о цели (персистентный)
     scheduler.schedule(
@@ -358,6 +410,11 @@ async def _handle_budget_no(
         video=config.VIDEO_ABOUT_ME,
     )
     await state.set_state(Funnel.reject)
+    # Метрика: отказ — мало данных
+    data = await state.get_data()
+    asyncio.create_task(
+        MetrikaService.send_conversion(data.get("client_id"), config.GOAL_NOT_ENOUGH, callback.from_user.id)
+    )
 
 
 @router.callback_query(F.data == CB_Q2_50K_YES)
@@ -440,6 +497,11 @@ async def _send_access_request(
         video=config.VIDEO_ACCESS_INSTRUCTION,
     )
     await state.set_state(Funnel.access_request)
+    # Метрика: запрос доступа показан
+    data = await state.get_data()
+    asyncio.create_task(
+        MetrikaService.send_conversion(data.get("client_id"), config.GOAL_ACCESS, user_id)
+    )
 
     # Таймер 10 мин → напоминание о доступе (персистентный)
     scheduler.schedule(
@@ -486,6 +548,10 @@ async def _send_price(user_id: int, state: FSMContext) -> None:
         video=config.VIDEO_WHY_PAID,
     )
     await state.set_state(Funnel.price)
+    # Метрика: стоимость показана
+    asyncio.create_task(
+        MetrikaService.send_conversion(data.get("client_id"), config.GOAL_PRICE, user_id)
+    )
 
     # Таймер 24ч → напоминание о цене (персистентный)
     scheduler.schedule(
@@ -540,6 +606,11 @@ async def on_sub_check(callback: CallbackQuery, state: FSMContext):
 
     await state.update_data(channel_subscribed=True)
     await callback.answer("Подписка подтверждена — цена со скидкой 8 000 ₽.")
+    # Метрика: скидка применена (подписка на канал)
+    data = await state.get_data()
+    asyncio.create_task(
+        MetrikaService.send_conversion(data.get("client_id"), config.GOAL_SUB, user_id)
+    )
     try:
         await callback.message.edit_text(
             MSG_PRICE_DISCOUNTED,
@@ -560,13 +631,19 @@ async def on_price_yes(callback: CallbackQuery, state: FSMContext):
 
 @router.callback_query(F.data == CB_PRICE_NO)
 async def on_price_no(callback: CallbackQuery, state: FSMContext):
-    scheduler.cancel(callback.from_user.id)
+    user_id = callback.from_user.id
+    scheduler.cancel(user_id)
     await callback.answer()
     await _remove_buttons(callback)
     await _send_step(
-        callback.from_user.id, MSG_INDIVIDUAL, keyboard=KB_INDIVIDUAL,
+        user_id, MSG_INDIVIDUAL, keyboard=KB_INDIVIDUAL,
     )
     await state.set_state(Funnel.individual)
+    # Метрика: другой способ оплаты
+    data = await state.get_data()
+    asyncio.create_task(
+        MetrikaService.send_conversion(data.get("client_id"), config.GOAL_ANOTHER_BILL, user_id)
+    )
 
 
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -639,32 +716,24 @@ async def _finalize_lead(user_id: int, state: FSMContext) -> None:
         msg = MSG_LEAD_SHORT
         lead_type_label = "Запрос связи"
 
-    # Сначала гарантированно убираем reply-клавиатуру (которая просила контакт),
-    # затем добавляем inline-кнопку редактированием reply_markup этого же сообщения.
-    final_msg = await bot.send_message(
+    # Отправляем финальное сообщение сразу с inline-кнопкой на канал.
+    # Так кнопка гарантированно прикрепляется именно к этому сообщению.
+    await bot.send_message(
         user_id,
         msg,
         parse_mode="HTML",
-        reply_markup=KB_PHONE_REMOVE,
+        reply_markup=kb_channel_link(),
     )
-
-    try:
-        await bot.edit_message_reply_markup(
-            chat_id=user_id,
-            message_id=final_msg.message_id,
-            reply_markup=kb_channel_link(),
-        )
-    except Exception:
-        pass
     await state.set_state(Funnel.finished)
 
-    # Метрика: заявка получена
+    # Метрика: специфичная цель (тип заявки + наличие телефона)
+    _phone = data.get("phone", "")
+    if lead_type_key == "requisites":
+        _specific_goal = config.GOAL_ORDER_PRICE_WITH_PHONE if _phone else config.GOAL_ORDER_PRICE_NO_PHONE
+    else:
+        _specific_goal = config.GOAL_ORDER_WITH_PHONE if _phone else config.GOAL_ORDER_NO_PHONE
     asyncio.create_task(
-        MetrikaService.send_conversion(
-            data.get("client_id"),
-            config.GOAL_LEAD_RECEIVED,
-            user_id,
-        )
+        MetrikaService.send_conversion(data.get("client_id"), _specific_goal, user_id)
     )
 
     # Уведомление админу

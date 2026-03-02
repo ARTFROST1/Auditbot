@@ -20,8 +20,23 @@ ADMIN_USER_ID: str = os.getenv("ADMIN_USER_ID", "")  # ID админа (личк
 # ── Яндекс.Метрика ───────────────────────────────────────
 METRIKA_TOKEN: str = os.getenv("METRIKA_TOKEN", "")
 METRIKA_COUNTER_ID: str = os.getenv("METRIKA_COUNTER_ID", "")
-GOAL_BOT_STARTED: str = os.getenv("GOAL_BOT_STARTED", "")     # ID цели «Бот запущен»
-GOAL_LEAD_RECEIVED: str = os.getenv("GOAL_LEAD_RECEIVED", "")  # ID цели «Заявка получена»
+GOAL_BOT_STARTED: str = os.getenv("GOAL_BOT_STARTED", "")     # ID цели «Бот запущен» (/start)
+GOAL_STEP1: str = os.getenv("GOAL_STEP1", "")                  # ID цели «Вопрос 1 показан»
+GOAL_STEP2: str = os.getenv("GOAL_STEP2", "")                  # ID цели «Вопрос 2 показан»
+GOAL_NOT_ENOUGH: str = os.getenv("GOAL_NOT_ENOUGH", "")        # ID цели «Отказ — мало данных»
+GOAL_STEP3: str = os.getenv("GOAL_STEP3", "")                  # ID цели «Ключевая цель показана»
+GOAL_NO_TARGET: str = os.getenv("GOAL_NO_TARGET", "")          # ID цели «Напоминание о цели (10 мин)»
+GOAL_ACCESS: str = os.getenv("GOAL_ACCESS", "")                # ID цели «Запрос доступа показан»
+GOAL_NO_ACCESS: str = os.getenv("GOAL_NO_ACCESS", "")          # ID цели «Напоминание о доступе (10 мин)»
+GOAL_PRICE: str = os.getenv("GOAL_PRICE", "")                  # ID цели «Стоимость показана»
+GOAL_SUB: str = os.getenv("GOAL_SUB", "")                      # ID цели «Скидка применена (подписка на канал)»
+GOAL_ANOTHER_BILL: str = os.getenv("GOAL_ANOTHER_BILL", "")    # ID цели «Другой способ оплаты»
+GOAL_HIGH_PRICE: str = os.getenv("GOAL_HIGH_PRICE", "")        # ID цели «Напоминание о цене (24ч)»
+GOAL_NO_REACTION: str = os.getenv("GOAL_NO_REACTION", "")      # ID цели «Финальное напоминание»
+GOAL_ORDER_WITH_PHONE: str = os.getenv("GOAL_ORDER_WITH_PHONE", "")          # ID цели «Заявка с телефоном (без оплаты)»
+GOAL_ORDER_NO_PHONE: str = os.getenv("GOAL_ORDER_NO_PHONE", "")              # ID цели «Заявка без телефона (без оплаты)»
+GOAL_ORDER_PRICE_WITH_PHONE: str = os.getenv("GOAL_ORDER_PRICE_WITH_PHONE", "")  # ID цели «Готов оплатить + телефон»
+GOAL_ORDER_PRICE_NO_PHONE: str = os.getenv("GOAL_ORDER_PRICE_NO_PHONE", "")      # ID цели «Готов оплатить без телефона»
 
 # ── Таймауты (секунды) ───────────────────────────────────
 GREETING_DELAY: int = int(os.getenv("GREETING_DELAY", "5"))

@@ -13,13 +13,14 @@ from logger import logger
 class MetrikaService:
     """Загрузка оффлайн-конверсий через Management API Яндекс.Метрики.
 
-    Используется для фиксации двух ключевых событий воронки:
-    1. Бот запущен (GOAL_BOT_STARTED)
-    2. Заявка получена (GOAL_LEAD_RECEIVED)
+    Используется для фиксации событий воронки (цели задаются в .env):
+    - bot_start, bot_step1, bot_step2, ...
+    - bot_order_* и т.д.
 
-    Если пользователь пришёл по deep-link с ClientId
-    (например /start cid_1234567890), используется этот ClientId.
-    Иначе используется Telegram user_id как fallback-идентификатор.
+    Конверсия отправляется только если передан реальный Яндекс.Метрика ClientId
+    (например, через deep-link /start cid_1234567890).
+    Если ClientId не передан — конверсия пропускается, так как Telegram user_id
+    не является валидным идентификатором для Метрики.
     """
 
     BASE_URL = "https://api-metrika.yandex.net/management/v1"
@@ -34,13 +35,20 @@ class MetrikaService:
         """Отправляет одну оффлайн-конверсию в Метрику.
 
         Args:
-            client_id: ClientId из Метрики (из deep-link). Может быть None.
+            client_id: ClientId из Метрики (из deep-link). Если None — конверсия не отправляется.
             goal_id: ID цели в Метрике.
-            tg_user_id: Telegram user ID (используется как fallback).
+            tg_user_id: Telegram user ID (сохраняется для логов, не используется как ClientId).
 
         Returns:
             True если конверсия успешно отправлена, иначе False.
         """
+        if client_id is None:
+            logger.debug(
+                f"ClientId не передан (tg_user_id={tg_user_id}, goal={goal_id}) "
+                "— конверсия пропущена"
+            )
+            return False
+
         if not all([config.METRIKA_TOKEN, config.METRIKA_COUNTER_ID, goal_id]):
             logger.debug(
                 "Метрика не настроена (токен/счётчик/цель) — "
@@ -48,7 +56,7 @@ class MetrikaService:
             )
             return False
 
-        cid = client_id or str(tg_user_id)
+        cid = client_id
         timestamp = str(int(time.time()))
 
         # Формируем CSV
