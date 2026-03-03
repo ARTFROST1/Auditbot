@@ -55,6 +55,7 @@ from messages import (
     MSG_ACCESS_REMINDER,
     MSG_ACCESS_REQUEST,
     MSG_FINAL_REMINDER,
+    MSG_GOAL_CONFIRMED,
     MSG_GOAL_REMINDER,
     MSG_GREETING,
     MSG_INDIVIDUAL,
@@ -490,6 +491,7 @@ async def _send_access_request(
     user_id: int, state: FSMContext,
 ) -> None:
     """Показать сообщение 8 — запрос доступа к Директу и Метрике."""
+    await _send_step(user_id, MSG_GOAL_CONFIRMED)
     await _send_step(
         user_id,
         MSG_ACCESS_REQUEST,
