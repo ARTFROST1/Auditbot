@@ -750,6 +750,13 @@ async def on_phone_contact(message: Message, state: FSMContext):
     """Пользователь поделился номером через кнопку."""
     phone = message.contact.phone_number
     await state.update_data(phone=phone)
+
+    # Явно убираем reply-клавиатуру с кнопками телефона.
+    try:
+        await message.answer("✅ Спасибо!", reply_markup=KB_PHONE_REMOVE)
+    except Exception:
+        pass
+
     await _finalize_lead(message.from_user.id, state)
 
 
@@ -757,6 +764,13 @@ async def on_phone_contact(message: Message, state: FSMContext):
 async def on_phone_skip(message: Message, state: FSMContext):
     """Пользователь пропустил шаг с номером."""
     await state.update_data(phone="")
+
+    # Явно убираем reply-клавиатуру с кнопками телефона.
+    try:
+        await message.answer("✅ Принято", reply_markup=KB_PHONE_REMOVE)
+    except Exception:
+        pass
+
     await _finalize_lead(message.from_user.id, state)
 
 
