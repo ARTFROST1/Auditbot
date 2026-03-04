@@ -245,7 +245,7 @@ MSG_PRICE_DISCOUNTED = (
 
 KB_PRICE = InlineKeyboardMarkup(inline_keyboard=[
     [InlineKeyboardButton(text="📢 Подписаться на канал", url=config.TG_CHANNEL_LINK)],
-    [InlineKeyboardButton(text="✅ Проверить подписку", callback_data=CB_SUB_CHECK)],
+    [InlineKeyboardButton(text="у Проверить подписку", callback_data=CB_SUB_CHECK)],
     [
         InlineKeyboardButton(text="✅ Да, по счёту", callback_data=CB_PRICE_YES),
         InlineKeyboardButton(text="💬 Другой способ", callback_data=CB_PRICE_NO),
@@ -389,6 +389,7 @@ def admin_notification(
     username: str,
     full_name: str,
     tg_user_id: int | str,
+    ycid: str,
     ad_worked: str,
     budget_ok: str,
     key_goal: str,
@@ -399,12 +400,14 @@ def admin_notification(
     """Формирует текст уведомления админу о новой заявке."""
     user_link = f"@{username}" if username else f"tg://user?id={tg_user_id}"
     phone_line = f"📱 Телефон: <b>{phone}</b>" if phone else "📱 Телефон: <i>не указан</i>"
+    ycid_line = f"🆔 ycid: <code>{ycid}</code>" if ycid else "🆔 ycid: <i>не передан</i>"
     sub_mark = "✅" if channel_subscribed else "❌"
     return (
         f"🔔 <b>Новая заявка из Auditbot!</b>\n"
         f"\n"
         f"👤 {full_name} ({user_link})\n"
         f"🆔 <code>{tg_user_id}</code>\n"
+        f"{ycid_line}\n"
         f"{phone_line}\n"
         f"\n"
         f"📊 Реклама работала: <b>{ad_worked}</b>\n"

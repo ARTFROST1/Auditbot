@@ -783,6 +783,7 @@ async def _notify_admin(data: dict, *, lead_type: str) -> None:
         username=data.get("username", ""),
         full_name=data.get("full_name", ""),
         tg_user_id=data.get("tg_user_id", ""),
+        ycid=data.get("client_id", ""),
         ad_worked=data.get("ad_worked", "—"),
         budget_ok=data.get("budget_ok", "—"),
         key_goal=data.get("key_goal", "—"),
