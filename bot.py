@@ -248,7 +248,18 @@ async def _send_step(
                 file_id = payload.split(":", 1)[1].strip()
                 if file_id:
                     logger.debug(f"Отправка кружка chat={chat_id} file_id={file_id[:20]}...")
-                    await bot.send_video_note(chat_id, video_note=file_id)
+                    try:
+                        await bot.send_video_note(chat_id, video_note=file_id)
+                    except TelegramBadRequest as vnote_err:
+                        if "VOICE_MESSAGES_FORBIDDEN" in str(vnote_err):
+                            logger.info(
+                                "Кружок запрещён (VOICE_MESSAGES_FORBIDDEN) chat=%s — "
+                                "отправляю как обычное видео",
+                                chat_id,
+                            )
+                            await bot.send_video(chat_id, video=file_id)
+                        else:
+                            raise
                 else:
                     logger.warning(f"Пустой file_id после префикса note: (chat={chat_id})")
             else:
