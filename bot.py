@@ -254,10 +254,17 @@ async def _send_step(
                         if "VOICE_MESSAGES_FORBIDDEN" in str(vnote_err):
                             logger.info(
                                 "Кружок запрещён (VOICE_MESSAGES_FORBIDDEN) chat=%s — "
-                                "отправляю как обычное видео",
+                                "отправляю как документ",
                                 chat_id,
                             )
-                            await bot.send_video(chat_id, video=file_id)
+                            try:
+                                await bot.send_document(chat_id, document=file_id)
+                            except Exception:
+                                logger.warning(
+                                    "Fallback send_document тоже не сработал chat=%s — "
+                                    "видео пропущено",
+                                    chat_id,
+                                )
                         else:
                             raise
                 else:
