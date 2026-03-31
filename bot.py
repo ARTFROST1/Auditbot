@@ -247,11 +247,18 @@ async def _send_step(
             if payload.startswith(("note:", "video_note:")):
                 file_id = payload.split(":", 1)[1].strip()
                 if file_id:
-                    await bot.send_video_note(chat_id, file_id)
+                    logger.debug(f"Отправка кружка chat={chat_id} file_id={file_id[:20]}...")
+                    await bot.send_video_note(chat_id, video_note=file_id)
+                else:
+                    logger.warning(f"Пустой file_id после префикса note: (chat={chat_id})")
             else:
-                await bot.send_video(chat_id, payload)
+                logger.debug(f"Отправка видео chat={chat_id} payload={repr(payload[:30])}")
+                await bot.send_video(chat_id, video=payload)
         except Exception as e:
-            logger.warning(f"Не удалось отправить видео/кружок: {e}")
+            logger.error(
+                "Не удалось отправить видео/кружок: %s | payload=%s",
+                e, repr(payload[:40]), exc_info=True,
+            )
     await bot.send_message(
         chat_id, text, parse_mode="HTML", reply_markup=keyboard,
     )
@@ -888,6 +895,42 @@ async def fallback_message(message: Message, state: FSMContext):
         )
 
 
+# ── Диагностика конфигурации видео при запуске ────────────
+def _diagnose_video_config() -> None:
+    """Логгирует состояние каждой VIDEO_* переменной при старте бота."""
+    _VIDEO_VARS = {
+        "VIDEO_GREETING": config.VIDEO_GREETING,
+        "VIDEO_KEY_GOAL": config.VIDEO_KEY_GOAL,
+        "VIDEO_ACCESS_INSTRUCTION": config.VIDEO_ACCESS_INSTRUCTION,
+        "VIDEO_GOAL_REMINDER": config.VIDEO_GOAL_REMINDER,
+        "VIDEO_ABOUT_ME": config.VIDEO_ABOUT_ME,
+        "VIDEO_WHY_PAID": config.VIDEO_WHY_PAID,
+        "VIDEO_PRICE_REMINDER": config.VIDEO_PRICE_REMINDER,
+    }
+    logger.info("── Диагностика VIDEO_* конфигурации ──")
+    for name, value in _VIDEO_VARS.items():
+        raw = value.strip() if value else ""
+        if not raw:
+            logger.info("  %s: пусто (видео не будет отправлено)", name)
+        elif raw.startswith(("note:", "video_note:")):
+            file_id = raw.split(":", 1)[1].strip()
+            if file_id:
+                logger.info(
+                    "  %s: кружок (video_note), file_id=%s",
+                    name, repr(file_id[:30]),
+                )
+            else:
+                logger.warning(
+                    "  %s: префикс кружка задан, но file_id пустой!", name,
+                )
+        else:
+            logger.info(
+                "  %s: обычное видео (send_video), payload=%s",
+                name, repr(raw[:30]),
+            )
+    logger.info("── Конец диагностики VIDEO_* ──")
+
+
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 #  Точка входа
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -914,6 +957,29 @@ async def main():
             "точно скопированным из @BotFather."
         )
         return
+
+    # ── Диагностика VIDEO_* при старте ────────────────────
+    _diagnose_video_config()
+
+    # ── Диагностика VIDEO_* конфигурации ──────────────────
+    _video_vars = {
+        "VIDEO_GREETING": config.VIDEO_GREETING,
+        "VIDEO_KEY_GOAL": config.VIDEO_KEY_GOAL,
+        "VIDEO_ACCESS_INSTRUCTION": config.VIDEO_ACCESS_INSTRUCTION,
+        "VIDEO_GOAL_REMINDER": config.VIDEO_GOAL_REMINDER,
+        "VIDEO_ABOUT_ME": config.VIDEO_ABOUT_ME,
+        "VIDEO_WHY_PAID": config.VIDEO_WHY_PAID,
+        "VIDEO_PRICE_REMINDER": config.VIDEO_PRICE_REMINDER,
+    }
+    for name, val in _video_vars.items():
+        v = (val or "").strip()
+        if not v:
+            logger.info(f"  {name}: ⬜ не задано")
+        elif v.startswith(("note:", "video_note:")):
+            fid = v.split(":", 1)[1].strip()
+            logger.info(f"  {name}: 🔵 кружок (video_note), file_id={fid[:20]}...")
+        else:
+            logger.info(f"  {name}: 🎬 обычное видео, value={v[:20]}...")
 
     # ── Персистентный планировщик ─────────────────────────
     # Регистрируем обработчики напоминаний (имя → функция).
