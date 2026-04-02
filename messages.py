@@ -33,6 +33,8 @@ CB_PRICE_REM_PAY = "price_rem:pay"
 CB_PRICE_REM_WRITE = "price_rem:write"
 CB_INDIVIDUAL_WRITE = "individual:write"
 CB_SUB_CHECK = "sub:check"
+CB_SUB_READY = "sub:ready"
+CB_PRICE_CONTINUE = "price:continue"
 
 
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -129,6 +131,14 @@ KB_REJECT = InlineKeyboardMarkup(inline_keyboard=[
 MSG_KEY_GOAL = (
     "🔑 <b>Отлично! Переходим к делу.</b>\n"
     "\n"
+    "Мы будем рассматривать аккаунт на 3х уровнях:\n"
+    "— технический;\n"
+    "— логический;\n"
+    "— стратегический.\n"
+    "\n"
+    "И чтобы мы корректно оценили существующие настройки, "
+    "нам надо понимать одну вещь.\n"
+    "\n"
     "Какая ключевая цель вашего рекламного аккаунта сейчас?\n"
     "\n"
     "<i>Напишите текстом — например: «Увеличить количество заявок», "
@@ -220,8 +230,8 @@ KB_ACCESS_REMINDER = InlineKeyboardMarkup(inline_keyboard=[
 MSG_PRICE = (
     "💼 <b>Условия аудита</b>\n"
     "\n"
-    "💰 Стоимость: <b>10 000 ₽</b>\n"
-    "🎁 При подписке на наш ТГ-канал: <b>8 000 ₽</b>\n"
+    "💰 Стоимость: <b>5 000 ₽</b>\n"
+    "🎁 При подписке на наш ТГ-канал: <b>БЕСПЛАТНО</b>\n"
     "⏱ Срок выполнения: <b>2–3 дня</b>\n"
     "\n"
     "Посмотрите видео — в нём мы объясняем, почему аудит платный "
@@ -233,15 +243,27 @@ MSG_PRICE = (
 MSG_PRICE_DISCOUNTED = (
     "💼 <b>Условия аудита</b>\n"
     "\n"
-    "💰 Стоимость: <s>10 000 ₽</s> <b>8 000 ₽</b>\n"
-    "✅ Скидка за подписку применена.\n"
+    "💰 Стоимость: <s>5 000 ₽</s> <b>БЕСПЛАТНО</b>\n"
+    "✅ Подписка на канал подтверждена.\n"
     "⏱ Срок выполнения: <b>2–3 дня</b>\n"
     "\n"
-    "Посмотрите видео — в нём мы объясняем, почему аудит платный "
-    "и что вы получите.\n"
-    "\n"
-    "Вам будет удобно оплатить через <b>расчётный счёт</b>?"
+    "Нажмите кнопку ниже, чтобы оставить заявку."
 )
+
+MSG_PRICE_SUB_REMINDER = (
+    "💡 <b>Кстати!</b>\n"
+    "\n"
+    "При подписке на наш ТГ-канал аудит становится <b>бесплатным</b>.\n"
+    "\n"
+    "Подпишитесь и нажмите «Проверить подписку» — "
+    "и аудит будет бесплатным!"
+)
+
+KB_PRICE_SUB_REMINDER = InlineKeyboardMarkup(inline_keyboard=[
+    [InlineKeyboardButton(text="📢 Подписаться на канал", url=config.TG_CHANNEL_LINK)],
+    [InlineKeyboardButton(text="🔍 Проверить подписку", callback_data=CB_SUB_CHECK)],
+    [InlineKeyboardButton(text="💳 Продолжить оплату (5 000 ₽)", callback_data=CB_PRICE_CONTINUE)],
+])
 
 KB_PRICE = InlineKeyboardMarkup(inline_keyboard=[
     [InlineKeyboardButton(text="📢 Подписаться на канал", url=config.TG_CHANNEL_LINK)],
@@ -250,6 +272,10 @@ KB_PRICE = InlineKeyboardMarkup(inline_keyboard=[
         InlineKeyboardButton(text="✅ Да, по счёту", callback_data=CB_PRICE_YES),
         InlineKeyboardButton(text="💬 Другой способ", callback_data=CB_PRICE_NO),
     ],
+])
+
+KB_PRICE_SUBSCRIBED = InlineKeyboardMarkup(inline_keyboard=[
+    [InlineKeyboardButton(text="✅ Я подписался. Готов к аудиту", callback_data=CB_SUB_READY)],
 ])
 
 
@@ -343,6 +369,19 @@ MSG_LEAD_REQUISITES = (
     f"А пока подписывайтесь на ТГ-канал — "
     f"там много полезного про Директ:\n"
     f"👇 Нажмите кнопку ниже"
+)
+
+MSG_LEAD_SUBSCRIBED = (
+    "🎉 <b>Заявка уже у нас!</b>\n"
+    "\n"
+    "Скоро вам напишем.\n"
+    "\n"
+    "А пока — вот самые интересные материалы:\n"
+    "\n"
+    '1. <a href="https://t.me/kirill_i_ta/66">Самая большая ошибка в Яндекс Директе</a>\n'
+    '2. <a href="https://t.me/kirill_i_ta/56">Одна простая истина</a>\n'
+    '3. <a href="https://t.me/kirill_i_ta/78">Не забывайте про продажи</a>\n'
+    '4. <a href="https://t.me/kirill_i_ta/76">Что обо мне стоит знать</a>'
 )
 
 

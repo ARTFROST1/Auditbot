@@ -34,6 +34,8 @@ from messages import (
     CB_PRICE_REM_WRITE,
     CB_PRICE_YES,
     CB_SUB_CHECK,
+    CB_SUB_READY,
+    CB_PRICE_CONTINUE,
     CB_Q1_NO,
     CB_Q1_YES,
     CB_Q2_100K_NO,
@@ -48,6 +50,8 @@ from messages import (
     KB_PHONE_REQUEST,
     KB_PRICE,
     KB_PRICE_REMINDER,
+    KB_PRICE_SUB_REMINDER,
+    KB_PRICE_SUBSCRIBED,
     KB_QUESTION_1,
     KB_QUESTION_2_100K,
     KB_QUESTION_2_50K,
@@ -62,10 +66,12 @@ from messages import (
     MSG_KEY_GOAL,
     MSG_LEAD_REQUISITES,
     MSG_LEAD_SHORT,
+    MSG_LEAD_SUBSCRIBED,
     MSG_PHONE_REQUEST,
     MSG_PRICE,
     MSG_PRICE_DISCOUNTED,
     MSG_PRICE_REMINDER,
+    MSG_PRICE_SUB_REMINDER,
     MSG_QUESTION_1,
     MSG_QUESTION_2_100K,
     MSG_QUESTION_2_50K,
@@ -567,11 +573,13 @@ async def on_access_rem_write(callback: CallbackQuery, state: FSMContext):
 async def _send_price(user_id: int, state: FSMContext) -> None:
     """Показать сообщение 10 — стоимость аудита."""
     data = await state.get_data()
-    text = MSG_PRICE_DISCOUNTED if data.get("channel_subscribed") else MSG_PRICE
+    subscribed = data.get("channel_subscribed")
+    text = MSG_PRICE_DISCOUNTED if subscribed else MSG_PRICE
+    kb = KB_PRICE_SUBSCRIBED if subscribed else KB_PRICE
     await _send_step(
         user_id,
         text,
-        keyboard=KB_PRICE,
+        keyboard=kb,
         video=config.VIDEO_WHY_PAID,
     )
     await state.set_state(Funnel.price)
@@ -632,20 +640,37 @@ async def on_sub_check(callback: CallbackQuery, state: FSMContext):
         return
 
     await state.update_data(channel_subscribed=True)
-    await callback.answer("Подписка подтверждена — цена со скидкой 8 000 ₽.")
+    await callback.answer("Подписка подтверждена — аудит бесплатно!")
     # Метрика: скидка применена (подписка на канал)
     data = await state.get_data()
     asyncio.create_task(
         MetrikaService.send_conversion(data.get("client_id"), config.GOAL_SUB, user_id)
     )
-    try:
-        await callback.message.edit_text(
-            MSG_PRICE_DISCOUNTED,
-            parse_mode="HTML",
-            reply_markup=KB_PRICE,
-        )
-    except Exception:
-        pass
+
+    if data.get("price_accepted"):
+        # Пользователь уже нажал "Да, по счёту" — перенаправляем на телефон → бесплатный аудит
+        scheduler.cancel(user_id)
+        await _remove_buttons(callback)
+        await _request_phone(user_id, state, lead_type="subscribed")
+    else:
+        try:
+            await callback.message.edit_text(
+                MSG_PRICE_DISCOUNTED,
+                parse_mode="HTML",
+                reply_markup=KB_PRICE_SUBSCRIBED,
+            )
+        except Exception:
+            pass
+
+
+@router.callback_query(F.data == CB_SUB_READY)
+async def on_sub_ready(callback: CallbackQuery, state: FSMContext):
+    """Подписчик нажал «Готов к аудиту» — бесплатный аудит, но сначала запрос телефона."""
+    user_id = callback.from_user.id
+    scheduler.cancel(user_id)
+    await callback.answer()
+    await _remove_buttons(callback)
+    await _request_phone(user_id, state, lead_type="subscribed")
 
 
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -653,7 +678,31 @@ async def on_sub_check(callback: CallbackQuery, state: FSMContext):
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 @router.callback_query(F.data == CB_PRICE_YES)
 async def on_price_yes(callback: CallbackQuery, state: FSMContext):
-    await _send_lead_requisites(callback, state)
+    user_id = callback.from_user.id
+    data = await state.get_data()
+    if data.get("channel_subscribed"):
+        # Уже подписан → сразу к телефону → бесплатный аудит
+        scheduler.cancel(user_id)
+        await callback.answer()
+        await _remove_buttons(callback)
+        await _request_phone(user_id, state, lead_type="subscribed")
+    else:
+        # Не подписан → напомнить про бесплатный вариант
+        scheduler.cancel(user_id)
+        await callback.answer()
+        await _remove_buttons(callback)
+        await state.update_data(price_accepted=True)
+        await _send_step(user_id, MSG_PRICE_SUB_REMINDER, keyboard=KB_PRICE_SUB_REMINDER)
+
+
+@router.callback_query(F.data == CB_PRICE_CONTINUE)
+async def on_price_continue(callback: CallbackQuery, state: FSMContext):
+    """Пользователь решил продолжить оплату без подписки."""
+    user_id = callback.from_user.id
+    scheduler.cancel(user_id)
+    await callback.answer()
+    await _remove_buttons(callback)
+    await _request_phone(user_id, state, lead_type="requisites")
 
 
 @router.callback_query(F.data == CB_PRICE_NO)
@@ -678,7 +727,19 @@ async def on_price_no(callback: CallbackQuery, state: FSMContext):
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 @router.callback_query(F.data == CB_PRICE_REM_PAY)
 async def on_price_rem_pay(callback: CallbackQuery, state: FSMContext):
-    await _send_lead_requisites(callback, state)
+    user_id = callback.from_user.id
+    data = await state.get_data()
+    if data.get("channel_subscribed"):
+        scheduler.cancel(user_id)
+        await callback.answer()
+        await _remove_buttons(callback)
+        await _request_phone(user_id, state, lead_type="subscribed")
+    else:
+        scheduler.cancel(user_id)
+        await callback.answer()
+        await _remove_buttons(callback)
+        await state.update_data(price_accepted=True)
+        await _send_step(user_id, MSG_PRICE_SUB_REMINDER, keyboard=KB_PRICE_SUB_REMINDER)
 
 
 @router.callback_query(F.data == CB_PRICE_REM_WRITE)
@@ -732,25 +793,31 @@ async def _request_phone(
 
 
 async def _finalize_lead(user_id: int, state: FSMContext) -> None:
-    """Отправить финальное сообщение, конверсию в Метрику и уведомашь админа."""
+    """Отправить финальное сообщение, конверсию в Метрику и уведомить админа."""
     data = await state.get_data()
     lead_type_key = data.get("pending_lead_type", "short")
 
-    if lead_type_key == "requisites":
+    if lead_type_key == "subscribed":
+        msg = MSG_LEAD_SUBSCRIBED
+        lead_type_label = "Подписчик (бесплатный аудит)"
+    elif lead_type_key == "requisites":
         msg = MSG_LEAD_REQUISITES
         lead_type_label = "Готов оплатить"
     else:
         msg = MSG_LEAD_SHORT
         lead_type_label = "Запрос связи"
 
-    # Отправляем финальное сообщение сразу с inline-кнопкой на канал.
-    # Так кнопка гарантированно прикрепляется именно к этому сообщению.
-    await bot.send_message(
-        user_id,
-        msg,
-        parse_mode="HTML",
-        reply_markup=kb_channel_link(),
-    )
+    if lead_type_key == "subscribed":
+        # Подписчик — отправляем без кнопки канала (уже подписан)
+        await bot.send_message(user_id, msg, parse_mode="HTML")
+    else:
+        # Остальные — с кнопкой на канал
+        await bot.send_message(
+            user_id,
+            msg,
+            parse_mode="HTML",
+            reply_markup=kb_channel_link(),
+        )
     await state.set_state(Funnel.finished)
 
     # Метрика: специфичная цель (тип заявки + наличие телефона)
