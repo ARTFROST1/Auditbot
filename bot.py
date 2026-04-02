@@ -130,6 +130,17 @@ async def _get_state_ctx(user_id: int) -> FSMContext:
     return FSMContext(storage=storage, key=key)
 
 
+async def _ensure_user_data(state: FSMContext, from_user) -> None:
+    """Re-populate user identity if lost after restart (MemoryStorage)."""
+    data = await state.get_data()
+    if not data.get("tg_user_id"):
+        await state.update_data(
+            tg_user_id=from_user.id,
+            username=from_user.username or "",
+            full_name=from_user.full_name or "",
+        )
+
+
 # ── Обработчики напоминаний (регистрируются в main()) ─────
 # Каждый handler — это top-level async-функция, принимающая user_id.
 # Они передаются в персистентный scheduler, который сохраняет их
@@ -360,6 +371,7 @@ async def cmd_start(message: Message, state: FSMContext):
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 @router.callback_query(F.data == CB_Q1_YES)
 async def on_q1_yes(callback: CallbackQuery, state: FSMContext):
+    await _ensure_user_data(state, callback.from_user)
     user_id = callback.from_user.id
     scheduler.cancel(user_id)
     await callback.answer()
@@ -380,6 +392,7 @@ async def on_q1_yes(callback: CallbackQuery, state: FSMContext):
 
 @router.callback_query(F.data == CB_Q1_NO)
 async def on_q1_no(callback: CallbackQuery, state: FSMContext):
+    await _ensure_user_data(state, callback.from_user)
     user_id = callback.from_user.id
     scheduler.cancel(user_id)
     await callback.answer()
@@ -451,21 +464,25 @@ async def _handle_budget_no(
 
 @router.callback_query(F.data == CB_Q2_50K_YES)
 async def on_q2_50k_yes(callback: CallbackQuery, state: FSMContext):
+    await _ensure_user_data(state, callback.from_user)
     await _handle_budget_yes(callback, state)
 
 
 @router.callback_query(F.data == CB_Q2_50K_NO)
 async def on_q2_50k_no(callback: CallbackQuery, state: FSMContext):
+    await _ensure_user_data(state, callback.from_user)
     await _handle_budget_no(callback, state)
 
 
 @router.callback_query(F.data == CB_Q2_100K_YES)
 async def on_q2_100k_yes(callback: CallbackQuery, state: FSMContext):
+    await _ensure_user_data(state, callback.from_user)
     await _handle_budget_yes(callback, state)
 
 
 @router.callback_query(F.data == CB_Q2_100K_NO)
 async def on_q2_100k_no(callback: CallbackQuery, state: FSMContext):
+    await _ensure_user_data(state, callback.from_user)
     await _handle_budget_no(callback, state)
 
 
@@ -474,6 +491,7 @@ async def on_q2_100k_no(callback: CallbackQuery, state: FSMContext):
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 @router.callback_query(F.data == CB_REJECT_APPLY)
 async def on_reject_apply(callback: CallbackQuery, state: FSMContext):
+    await _ensure_user_data(state, callback.from_user)
     await _send_lead_short(callback, state)
 
 
@@ -483,6 +501,7 @@ async def on_reject_apply(callback: CallbackQuery, state: FSMContext):
 @router.message(Funnel.key_goal)
 async def on_key_goal_text(message: Message, state: FSMContext):
     """Пользователь написал текстом свою ключевую цель."""
+    await _ensure_user_data(state, message.from_user)
     scheduler.cancel(message.from_user.id)
     await state.update_data(key_goal=(message.text or "").strip())
     await _send_access_request(message.from_user.id, state)
@@ -491,6 +510,7 @@ async def on_key_goal_text(message: Message, state: FSMContext):
 @router.message(Funnel.goal_reminder)
 async def on_goal_reminder_text(message: Message, state: FSMContext):
     """Пользователь ответил текстом на напоминание о ключевой цели."""
+    await _ensure_user_data(state, message.from_user)
     scheduler.cancel(message.from_user.id)
     await state.update_data(key_goal=(message.text or "").strip())
     await _send_access_request(message.from_user.id, state)
@@ -503,6 +523,7 @@ async def on_goal_reminder_text(message: Message, state: FSMContext):
 async def on_goal_audit(callback: CallbackQuery, state: FSMContext):
     # Legacy: раньше кнопка "Перейти к аудиту" пускала дальше без цели.
     # Теперь по нажатию остаёмся на шаге цели и ждём текстовый ответ.
+    await _ensure_user_data(state, callback.from_user)
     user_id = callback.from_user.id
     scheduler.cancel(user_id)
     await callback.answer()
@@ -548,6 +569,7 @@ async def _send_access_request(
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 @router.callback_query(F.data == CB_ACCESS_YES)
 async def on_access_yes(callback: CallbackQuery, state: FSMContext):
+    await _ensure_user_data(state, callback.from_user)
     scheduler.cancel(callback.from_user.id)
     await callback.answer()
     await _remove_buttons(callback)
@@ -556,6 +578,7 @@ async def on_access_yes(callback: CallbackQuery, state: FSMContext):
 
 @router.callback_query(F.data == CB_ACCESS_REM_YES)
 async def on_access_rem_yes(callback: CallbackQuery, state: FSMContext):
+    await _ensure_user_data(state, callback.from_user)
     scheduler.cancel(callback.from_user.id)
     await callback.answer()
     await _remove_buttons(callback)
@@ -564,6 +587,7 @@ async def on_access_rem_yes(callback: CallbackQuery, state: FSMContext):
 
 @router.callback_query(F.data == CB_ACCESS_REM_WRITE)
 async def on_access_rem_write(callback: CallbackQuery, state: FSMContext):
+    await _ensure_user_data(state, callback.from_user)
     await _send_lead_short(callback, state)
 
 
@@ -605,6 +629,7 @@ def _channel_chat_id() -> str:
 @router.callback_query(F.data == CB_SUB_CHECK)
 async def on_sub_check(callback: CallbackQuery, state: FSMContext):
     """Проверка подписки на ТГ-канал, чтобы применить скидку."""
+    await _ensure_user_data(state, callback.from_user)
     user_id = callback.from_user.id
     chat_id = _channel_chat_id()
     if not chat_id:
@@ -666,6 +691,7 @@ async def on_sub_check(callback: CallbackQuery, state: FSMContext):
 @router.callback_query(F.data == CB_SUB_READY)
 async def on_sub_ready(callback: CallbackQuery, state: FSMContext):
     """Подписчик нажал «Готов к аудиту» — бесплатный аудит, но сначала запрос телефона."""
+    await _ensure_user_data(state, callback.from_user)
     user_id = callback.from_user.id
     scheduler.cancel(user_id)
     await callback.answer()
@@ -678,6 +704,7 @@ async def on_sub_ready(callback: CallbackQuery, state: FSMContext):
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 @router.callback_query(F.data == CB_PRICE_YES)
 async def on_price_yes(callback: CallbackQuery, state: FSMContext):
+    await _ensure_user_data(state, callback.from_user)
     user_id = callback.from_user.id
     data = await state.get_data()
     if data.get("channel_subscribed"):
@@ -698,6 +725,7 @@ async def on_price_yes(callback: CallbackQuery, state: FSMContext):
 @router.callback_query(F.data == CB_PRICE_CONTINUE)
 async def on_price_continue(callback: CallbackQuery, state: FSMContext):
     """Пользователь решил продолжить оплату без подписки."""
+    await _ensure_user_data(state, callback.from_user)
     user_id = callback.from_user.id
     scheduler.cancel(user_id)
     await callback.answer()
@@ -707,6 +735,7 @@ async def on_price_continue(callback: CallbackQuery, state: FSMContext):
 
 @router.callback_query(F.data == CB_PRICE_NO)
 async def on_price_no(callback: CallbackQuery, state: FSMContext):
+    await _ensure_user_data(state, callback.from_user)
     user_id = callback.from_user.id
     scheduler.cancel(user_id)
     await callback.answer()
@@ -727,6 +756,7 @@ async def on_price_no(callback: CallbackQuery, state: FSMContext):
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 @router.callback_query(F.data == CB_PRICE_REM_PAY)
 async def on_price_rem_pay(callback: CallbackQuery, state: FSMContext):
+    await _ensure_user_data(state, callback.from_user)
     user_id = callback.from_user.id
     data = await state.get_data()
     if data.get("channel_subscribed"):
@@ -744,6 +774,7 @@ async def on_price_rem_pay(callback: CallbackQuery, state: FSMContext):
 
 @router.callback_query(F.data == CB_PRICE_REM_WRITE)
 async def on_price_rem_write(callback: CallbackQuery, state: FSMContext):
+    await _ensure_user_data(state, callback.from_user)
     await _send_lead_short(callback, state)
 
 
@@ -752,6 +783,7 @@ async def on_price_rem_write(callback: CallbackQuery, state: FSMContext):
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 @router.callback_query(F.data == CB_INDIVIDUAL_WRITE)
 async def on_individual_write(callback: CallbackQuery, state: FSMContext):
+    await _ensure_user_data(state, callback.from_user)
     await _send_lead_short(callback, state)
 
 
@@ -840,6 +872,7 @@ async def _finalize_lead(user_id: int, state: FSMContext) -> None:
 @router.message(Funnel.phone_request, F.contact)
 async def on_phone_contact(message: Message, state: FSMContext):
     """Пользователь поделился номером через кнопку."""
+    await _ensure_user_data(state, message.from_user)
     phone = message.contact.phone_number
     await state.update_data(phone=phone)
 
@@ -855,6 +888,7 @@ async def on_phone_contact(message: Message, state: FSMContext):
 @router.message(Funnel.phone_request)
 async def on_phone_skip(message: Message, state: FSMContext):
     """Пользователь пропустил шаг с номером."""
+    await _ensure_user_data(state, message.from_user)
     await state.update_data(phone="")
 
     # Явно убираем reply-клавиатуру с кнопками телефона.
@@ -871,6 +905,7 @@ async def _notify_admin(data: dict, *, lead_type: str) -> None:
     if not config.ADMIN_CHAT_ID:
         logger.debug("ADMIN_CHAT_ID не задан — уведомление не отправлено")
         return
+    data_incomplete = not data.get("tg_user_id")
     text = admin_notification(
         username=data.get("username", ""),
         full_name=data.get("full_name", ""),
@@ -882,6 +917,7 @@ async def _notify_admin(data: dict, *, lead_type: str) -> None:
         phone=data.get("phone", ""),
         lead_type=lead_type,
         channel_subscribed=bool(data.get("channel_subscribed")),
+        data_incomplete=data_incomplete,
     )
     try:
         await bot.send_message(

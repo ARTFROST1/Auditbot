@@ -275,7 +275,7 @@ KB_PRICE = InlineKeyboardMarkup(inline_keyboard=[
 ])
 
 KB_PRICE_SUBSCRIBED = InlineKeyboardMarkup(inline_keyboard=[
-    [InlineKeyboardButton(text="✅ Я подписался. Готов к аудиту", callback_data=CB_SUB_READY)],
+    [InlineKeyboardButton(text="✅ Готов к аудиту", callback_data=CB_SUB_READY)],
 ])
 
 
@@ -435,13 +435,14 @@ def admin_notification(
     phone: str,
     lead_type: str,
     channel_subscribed: bool | None,
+    data_incomplete: bool = False,
 ) -> str:
     """Формирует текст уведомления админу о новой заявке."""
     user_link = f"@{username}" if username else f"tg://user?id={tg_user_id}"
     phone_line = f"📱 Телефон: <b>{phone}</b>" if phone else "📱 Телефон: <i>не указан</i>"
     ycid_line = f"🆔 ycid: <code>{ycid}</code>" if ycid else "🆔 ycid: <i>не передан</i>"
     sub_mark = "✅" if channel_subscribed else "❌"
-    return (
+    body = (
         f"🔔 <b>Новая заявка из Auditbot!</b>\n"
         f"\n"
         f"👤 {full_name} ({user_link})\n"
@@ -456,3 +457,6 @@ def admin_notification(
         f"\n"
         f"📝 Тип заявки: <b>{lead_type}</b>"
     )
+    if data_incomplete:
+        body += "\n\n⚠️ <i>Часть данных утрачена (перезапуск бота)</i>"
+    return body
