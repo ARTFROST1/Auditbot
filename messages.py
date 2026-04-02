@@ -262,7 +262,7 @@ MSG_PRICE_SUB_REMINDER = (
 KB_PRICE_SUB_REMINDER = InlineKeyboardMarkup(inline_keyboard=[
     [InlineKeyboardButton(text="📢 Подписаться на канал", url=config.TG_CHANNEL_LINK)],
     [InlineKeyboardButton(text="🔍 Проверить подписку", callback_data=CB_SUB_CHECK)],
-    [InlineKeyboardButton(text="💳 Продолжить оплату (5 000 ₽)", callback_data=CB_PRICE_CONTINUE)],
+    [InlineKeyboardButton(text="➡️ Продолжить без подписки", callback_data=CB_PRICE_CONTINUE)],
 ])
 
 KB_PRICE = InlineKeyboardMarkup(inline_keyboard=[
