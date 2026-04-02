@@ -267,7 +267,7 @@ KB_PRICE_SUB_REMINDER = InlineKeyboardMarkup(inline_keyboard=[
 
 KB_PRICE = InlineKeyboardMarkup(inline_keyboard=[
     [InlineKeyboardButton(text="📢 Подписаться на канал", url=config.TG_CHANNEL_LINK)],
-    [InlineKeyboardButton(text="у Проверить подписку", callback_data=CB_SUB_CHECK)],
+    [InlineKeyboardButton(text="🔍 Проверить подписку", callback_data=CB_SUB_CHECK)],
     [
         InlineKeyboardButton(text="✅ Да, по счёту", callback_data=CB_PRICE_YES),
         InlineKeyboardButton(text="💬 Другой способ", callback_data=CB_PRICE_NO),
